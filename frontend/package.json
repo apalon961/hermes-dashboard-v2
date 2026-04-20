@@ -1,0 +1,9 @@
+{
+  "name": "hermes-dashboard",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'static build'",
+    "preview": "echo 'preview'"
+  }
+}
