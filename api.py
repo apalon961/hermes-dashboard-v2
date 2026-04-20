@@ -1,52 +1,35 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import psutil, json, os, time
-from pathlib import Path
+import time
 from datetime import datetime
 
 app = FastAPI(title="Hermes Dashboard API")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-HERMES_DIR = Path(os.environ.get("HERMES_DIR", "/root/.hermes"))
-
-@app.get("/api/system")
-def system_info():
-    return {
-        "cpu": psutil.cpu_percent(interval=1),
-        "ram": psutil.virtual_memory().percent,
-        "disk": psutil.disk_usage("/").percent,
-        "uptime": int(time.time() - psutil.boot_time()),
-    }
-
-@app.get("/api/sessions")
-def list_sessions():
-    sessions_dir = HERMES_DIR / "sessions"
-    if not sessions_dir.exists():
-        return []
-    sessions = []
-    for f in sorted(sessions_dir.glob("*.json"), key=os.path.getmtime, reverse=True)[:20]:
-        stat = f.stat()
-        sessions.append({
-            "id": f.stem,
-            "size": stat.st_size,
-            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-        })
-    return sessions
-
-@app.get("/api/files")
-def list_files(path: str = "/"):
-    target = HERMES_DIR / path.lstrip("/")
-    if not target.exists():
-        raise HTTPException(404, "Not found")
-    items = []
-    for item in sorted(target.iterdir()):
-        items.append({
-            "name": item.name,
-            "is_dir": item.is_dir(),
-            "size": item.stat().st_size if item.is_file() else 0,
-        })
-    return items
+START_TIME = time.time()
 
 @app.get("/api/health")
 def health():
     return {"status": "ok", "time": datetime.now().isoformat()}
+
+@app.get("/api/system")
+def system_info():
+    import os
+    load = os.getloadavg()
+    mem = {}
+    with open("/proc/meminfo") as f:
+        for line in f:
+            parts = line.split()
+            if parts[0].rstrip(":") in ("MemTotal", "MemAvailable"):
+                mem[parts[0].rstrip(":")] = int(parts[1])
+    ram_pct = round((1 - mem.get("MemAvailable", 0) / mem.get("MemTotal", 1)) * 100, 1)
+    return {
+        "cpu": round(load[0] * 100 / max(os.cpu_count() or 1, 1), 1),
+        "ram": ram_pct,
+        "uptime": int(time.time() - START_TIME),
+    }
